@@ -18,20 +18,17 @@ Basic usage:
 
 ```python
 import machine
-from pysm import State, StateMachine, Event
 import time
+from pysm import State, StateMachine, Event
 
 led = machine.Pin(2, machine.Pin.OUT)
 
-test_list = []
 
 def on_enter(state, event):
-    test_list.append(('enter', state))
     led.value(1)
     time.sleep(0.1)
 
 def on_exit(state, event):
-    test_list.append(('exit', state))
     led.value(0)
     time.sleep(0.1)
 
@@ -55,6 +52,7 @@ sm.dispatch(Event('off'))
 assert sm.state == off
 sm.dispatch(Event('on'))
 assert sm.state == on
+
 ```
 
 For more examples and API description refer to the [pysm documentation](http://pysm.readthedocs.io/).
