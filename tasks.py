@@ -22,7 +22,7 @@ def build(c):
 @task(copy_pysm_code)
 def sdist(c):
     c.run("python setup.py sdist")
-    c.run("python setup.py bdist_wheel")
+    #  c.run("python setup.py bdist_wheel")
     c.run("rm dist/*.orig")
 
 
