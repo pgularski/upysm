@@ -25,6 +25,7 @@ setup(
     author_email='piotr.gularski@gmail.com',
     license='MIT',
     long_description=read('README.md'),
+    long_description_content_type="text/markdown",
     packages=['pysm'],
     zip_safe=False,
     classifiers=[

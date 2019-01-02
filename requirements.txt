@@ -1,2 +1,2 @@
 invoke
-pyminifier
+twine
