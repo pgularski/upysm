@@ -32,6 +32,7 @@ def gzip_4k(inf, fname):
 
 
 FILTERS = [
+    r"LICENSE$",
     r"PKG-INFO$",
     r".+\.egg-info/(PKG-INFO|requires\.txt)$",
     r"pysm/.+\.py$",
