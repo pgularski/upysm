@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Package
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Install build dependencies
+        run: python -m pip install --upgrade pip -r requirements.txt
+
+      - name: Build and check latest pysm release
+        run: python -m scripts.build_upysm --pysm-version latest --check --smoke
+
+  micropython:
+    name: MicroPython Unix smoke
+    runs-on: ubuntu-22.04
+
+    env:
+      MICROPYTHON_VERSION: v1.28.0
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Install build dependencies
+        run: python -m pip install --upgrade pip -r requirements.txt
+
+      - name: Install MicroPython build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential git python3 pkg-config libffi-dev
+
+      - name: Check out MicroPython
+        run: |
+          git clone --depth 1 --branch "$MICROPYTHON_VERSION" \
+            https://github.com/micropython/micropython.git /tmp/micropython
+
+      - name: Build MicroPython Unix port
+        run: |
+          make -C /tmp/micropython/mpy-cross -j2
+          make -C /tmp/micropython/ports/unix submodules
+          make -C /tmp/micropython/ports/unix -j2
+
+      - name: Build staged upysm package
+        run: |
+          python -m scripts.build_upysm \
+            --pysm-version latest \
+            --stage-dir build/upysm-stage \
+            --keep-stage
+
+      - name: Run smoke tests with MicroPython
+        working-directory: build/upysm-stage
+        run: /tmp/micropython/ports/unix/build-standard/micropython ../../test/upysm_smoke.py

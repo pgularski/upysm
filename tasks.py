@@ -3,27 +3,18 @@
 
 from invoke import task
 
-@task
-def clone_pysm(c):
-    c.run('mkdir -p libs')
-    with c.cd('libs'):
-        c.run("git clone git@github.com:pgularski/pysm.git")
 
-@task(clone_pysm)
-def copy_pysm_code(c):
-    c.run("cp -r libs/pysm/pysm ./")
+@task(help={'pysm_version': 'pysm version to package, or "latest"'})
+def build(c, pysm_version='latest'):
+    c.run(
+        'python -m scripts.build_upysm '
+        '--pysm-version {0} --check --smoke'.format(pysm_version)
+    )
 
 
-@task(copy_pysm_code)
-def build(c):
-    c.run("python setup.py build")
-
-
-@task(copy_pysm_code)
-def sdist(c):
-    c.run("python setup.py sdist")
-    #  c.run("python setup.py bdist_wheel")
-    c.run("rm dist/*.orig")
+@task(help={'pysm_version': 'pysm version to package, or "latest"'})
+def sdist(c, pysm_version='latest'):
+    build(c, pysm_version)
 
 
 @task
@@ -34,6 +25,6 @@ def deploy(c):
 @task
 def clean(c):
     patterns = ['build', 'dist', 'pysm', '__pycache__', 'upysm.egg-info',
-            '.eggs', 'libs']
+                '.eggs']
     for pattern in patterns:
         c.run("rm -rf {}".format(pattern))

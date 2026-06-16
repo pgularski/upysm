@@ -3,9 +3,6 @@
 # command to perform pre- and post-processing as required for MicroPython's
 # upip package manager.
 #
-# Preprocessing steps:
-#  * Creation of Python resource module (R.py) from each top-level package's
-#    resources.
 # Postprocessing steps:
 #  * Removing metadata files not used by upip (this includes setup.py)
 #  * Recompressing gzip archive with 4K dictionary size so it can be
@@ -14,13 +11,10 @@
 import sys
 import os
 import zlib
-from subprocess import Popen, PIPE
-import glob
 import tarfile
 import re
 import io
 
-from distutils.filelist import FileList
 from setuptools.command.sdist import sdist as _sdist
 
 
@@ -38,16 +32,18 @@ def gzip_4k(inf, fname):
 
 
 FILTERS = [
-    # include, exclude, repeat
-    (r".+\.egg-info/(PKG-INFO|requires\.txt)", r"setup.py$"),
-    (r".+\.py$", r"[^/]+$"),
-    (None, r".+\.egg-info/.+"),
+    r"PKG-INFO$",
+    r".+\.egg-info/(PKG-INFO|requires\.txt)$",
+    r"pysm/.+\.py$",
 ]
 
 
-outbuf = io.BytesIO()
+def should_include(fname):
+    return any(re.match(pattern, fname) for pattern in FILTERS)
+
 
 def filter_tar(name):
+    outbuf = io.BytesIO()
     fin = tarfile.open(name, "r:gz")
     fout = tarfile.open(fileobj=outbuf, mode="w")
     for info in fin:
@@ -55,21 +51,8 @@ def filter_tar(name):
         if not "/" in info.name:
             continue
         fname = info.name.split("/", 1)[1]
-        include = None
 
-        for inc_re, exc_re in FILTERS:
-            if include is None and inc_re:
-                if re.match(inc_re, fname):
-                    include = True
-
-            if include is None and exc_re:
-                if re.match(exc_re, fname):
-                    include = False
-
-        if include is None:
-            include = True
-
-        if include:
+        if should_include(fname):
             print("including:", fname)
         else:
             print("excluding:", fname)
@@ -79,56 +62,18 @@ def filter_tar(name):
         fout.addfile(info, farch)
     fout.close()
     fin.close()
-
-
-def make_resource_module(manifest_files):
-        resources = []
-        # Any non-python file included in manifest is resource
-        for fname in manifest_files:
-            ext = fname.rsplit(".", 1)[1]
-            if ext != "py":
-                resources.append(fname)
-
-        if resources:
-            print("creating resource module R.py")
-            resources.sort()
-            last_pkg = None
-            r_file = None
-            for fname in resources:
-                try:
-                    pkg, res_name = fname.split("/", 1)
-                except ValueError:
-                    print("not treating %s as a resource" % fname)
-                    continue
-                if last_pkg != pkg:
-                    last_pkg = pkg
-                    if r_file:
-                        r_file.write("}\n")
-                        r_file.close()
-                    r_file = open(pkg + "/R.py", "w")
-                    r_file.write("R = {\n")
-
-                with open(fname, "rb") as f:
-                    r_file.write("%r: %r,\n" % (res_name, f.read()))
-
-            if r_file:
-                r_file.write("}\n")
-                r_file.close()
+    outbuf.seek(0)
+    return outbuf
 
 
 class sdist(_sdist):
 
     def run(self):
-        self.filelist = FileList()
-        self.get_file_list()
-        make_resource_module(self.filelist.files)
-
         r = super().run()
 
         assert len(self.archive_files) == 1
         print("filtering files and recompressing with 4K dictionary")
-        filter_tar(self.archive_files[0])
-        outbuf.seek(0)
+        outbuf = filter_tar(self.archive_files[0])
         gzip_4k(outbuf, self.archive_files[0])
 
         return r
@@ -136,6 +81,5 @@ class sdist(_sdist):
 
 # For testing only
 if __name__ == "__main__":
-    filter_tar(sys.argv[1])
-    outbuf.seek(0)
+    outbuf = filter_tar(sys.argv[1])
     gzip_4k(outbuf, sys.argv[1])
