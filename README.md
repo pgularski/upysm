@@ -41,20 +41,20 @@ site/                        # static mip package tree for GitHub Pages
 
 ## Publish
 
-Publishing is handled by the `Publish` GitHub Actions workflow. Run it
-manually, select `latest` or an explicit `pysm` version, and the workflow will
-build, check, smoke test, publish the matching `upysm` sdist to PyPI using
-trusted publishing, and publish the `mip` package tree to the `gh-pages`
-branch.
-
-Configure GitHub Pages once to serve the `gh-pages` branch from `/`.
-
-For a local upload:
+PyPI publishing is manual. Build and check the selected `pysm` release, then
+upload the matching `upysm` source distribution:
 
 ```bash
-python3 -m scripts.build_upysm --pysm-version 0.4.0 --check
+python3 -m scripts.build_upysm --pysm-version 0.4.0 --check --smoke
 python3 -m twine upload dist/upysm-0.4.0.tar.gz
 ```
+
+The `Publish mip` GitHub Actions workflow publishes only the `mip` package
+tree. Run it manually after the PyPI upload, select the same `pysm` version,
+and it will build, check, smoke test, and publish the generated `site/` tree to
+the `gh-pages` branch.
+
+Configure GitHub Pages once to serve the `gh-pages` branch from `/`.
 
 ## Install on MicroPython
 
