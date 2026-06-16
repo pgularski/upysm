@@ -1,0 +1,31 @@
+{
+  "deps": [
+    [
+      "collections-deque",
+      "latest"
+    ],
+    [
+      "collections-defaultdict",
+      "latest"
+    ],
+    [
+      "logging",
+      "latest"
+    ]
+  ],
+  "urls": [
+    [
+      "pysm/__init__.py",
+      "pysm/__init__.py"
+    ],
+    [
+      "pysm/pysm.py",
+      "pysm/pysm.py"
+    ],
+    [
+      "pysm/version.py",
+      "pysm/version.py"
+    ]
+  ],
+  "version": "0.4.0"
+}
