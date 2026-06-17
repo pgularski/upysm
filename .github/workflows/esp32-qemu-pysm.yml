@@ -1,0 +1,165 @@
+name: ESP32 QEMU pysm smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      pysm-version:
+        description: 'pysm version to package, or "latest"'
+        required: true
+        default: latest
+      package-profile:
+        description: 'Files to copy from pysm'
+        required: true
+        default: core
+        type: choice
+        options:
+          - core
+          - all
+
+permissions:
+  contents: read
+
+jobs:
+  esp32-qemu:
+    name: ESP32 QEMU smoke
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+
+    env:
+      ESP_IDF_VERSION: v5.5.1
+      MICROPYTHON_BOARD: ESP32_GENERIC
+      MICROPYTHON_VERSION: v1.28.0
+      QEMU_TIMEOUT_SECONDS: "180"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip -r requirements.txt
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            ccache \
+            cmake \
+            dfu-util \
+            flex \
+            gperf \
+            libffi-dev \
+            libgcrypt20 \
+            libglib2.0-0 \
+            libpixman-1-0 \
+            libsdl2-2.0-0 \
+            libslirp0 \
+            libssl-dev \
+            libusb-1.0-0 \
+            ninja-build \
+            python3 \
+            python3-venv
+
+      - name: Check out ESP-IDF
+        run: |
+          git clone --depth 1 --branch "$ESP_IDF_VERSION" \
+            https://github.com/espressif/esp-idf.git /tmp/esp-idf
+          git -C /tmp/esp-idf submodule update --init --recursive --depth 1
+
+      - name: Install ESP-IDF tools and QEMU
+        run: |
+          /tmp/esp-idf/install.sh esp32
+          python /tmp/esp-idf/tools/idf_tools.py install qemu-xtensa
+
+      - name: Check out MicroPython
+        run: |
+          git clone --depth 1 --branch "$MICROPYTHON_VERSION" \
+            https://github.com/micropython/micropython.git /tmp/micropython
+
+      - name: Build staged upysm package
+        run: |
+          python -m scripts.build_upysm \
+            --pysm-version "${{ inputs['pysm-version'] }}" \
+            --package-profile "${{ inputs['package-profile'] }}" \
+            --stage-dir build/upysm-stage \
+            --keep-stage
+
+      - name: Prepare frozen MicroPython smoke test
+        run: |
+          mkdir -p build/qemu-pysm
+          cp test/upysm_smoke.py build/qemu-pysm/main.py
+          cat > build/qemu-pysm/manifest.py <<PY
+          include("\$(PORT_DIR)/boards/manifest.py")
+          require("collections")
+          require("collections-defaultdict")
+          require("logging")
+          package("pysm", base_path="${GITHUB_WORKSPACE}/build/upysm-stage")
+          module("main.py", base_path="${GITHUB_WORKSPACE}/build/qemu-pysm")
+          PY
+
+          cat > build/qemu-pysm/run-qemu.sh <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+
+          cd /tmp/micropython/ports/esp32
+          idf.py \
+            -D "MICROPY_BOARD=${MICROPYTHON_BOARD}" \
+            -D "MICROPY_BOARD_DIR=/tmp/micropython/ports/esp32/boards/${MICROPYTHON_BOARD}" \
+            -D "MICROPY_FROZEN_MANIFEST=${GITHUB_WORKSPACE}/build/qemu-pysm/manifest.py" \
+            -B "build-${MICROPYTHON_BOARD}" \
+            qemu monitor
+          SH
+          chmod +x build/qemu-pysm/run-qemu.sh
+
+      - name: Build MicroPython ESP32 firmware
+        run: |
+          . /tmp/esp-idf/export.sh
+          make -C /tmp/micropython/mpy-cross -j2
+          make -C /tmp/micropython/ports/esp32 \
+            BOARD="$MICROPYTHON_BOARD" \
+            FROZEN_MANIFEST="${GITHUB_WORKSPACE}/build/qemu-pysm/manifest.py" \
+            submodules
+          make -C /tmp/micropython/ports/esp32 \
+            BOARD="$MICROPYTHON_BOARD" \
+            FROZEN_MANIFEST="${GITHUB_WORKSPACE}/build/qemu-pysm/manifest.py"
+
+      - name: Run pysm smoke test in ESP32 QEMU
+        run: |
+          . /tmp/esp-idf/export.sh
+
+          log="${GITHUB_WORKSPACE}/build/qemu-pysm/qemu.log"
+          rm -f "$log"
+
+          setsid "${GITHUB_WORKSPACE}/build/qemu-pysm/run-qemu.sh" > >(tee "$log") 2>&1 &
+          qemu_group=$!
+
+          cleanup() {
+            kill -TERM -- "-${qemu_group}" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          deadline=$((SECONDS + QEMU_TIMEOUT_SECONDS))
+          while (( SECONDS < deadline )); do
+            if grep -q "upysm smoke ok" "$log" 2>/dev/null; then
+              echo "QEMU smoke marker found."
+              exit 0
+            fi
+
+            if ! kill -0 "$qemu_group" 2>/dev/null; then
+              set +e
+              wait "$qemu_group"
+              qemu_status=$?
+              set -e
+              echo "::error::QEMU exited before the smoke marker appeared."
+              exit "$qemu_status"
+            fi
+
+            sleep 2
+          done
+
+          echo "::error::Timed out waiting for the QEMU smoke marker."
+          tail -200 "$log" || true
+          exit 1
