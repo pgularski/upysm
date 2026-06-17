@@ -90,15 +90,27 @@ jobs:
       - name: Prepare frozen MicroPython smoke test
         run: |
           mkdir -p build/qemu-pysm
-          cp test/upysm_smoke.py build/qemu-pysm/main.py
+          cat > build/qemu-pysm/main.py <<'PY'
+          import upysm_smoke
+          import upysm_all_smoke
+
+          print('upysm qemu smoke ok')
+          PY
+
           cat > build/qemu-pysm/manifest.py <<PY
           include("\$(PORT_DIR)/boards/manifest.py")
           require("collections")
           require("collections-defaultdict")
           require("logging")
           package("pysm", base_path="${GITHUB_WORKSPACE}/build/upysm-stage")
+          module("upysm_smoke.py", base_path="${GITHUB_WORKSPACE}/test")
+          module("upysm_all_smoke.py", base_path="${GITHUB_WORKSPACE}/test")
           module("main.py", base_path="${GITHUB_WORKSPACE}/build/qemu-pysm")
           PY
+
+          if [ "${{ inputs['package-profile'] }}" = "all" ]; then
+            echo 'require("inspect")' >> build/qemu-pysm/manifest.py
+          fi
 
           cat > build/qemu-pysm/run-qemu.sh <<'SH'
           #!/usr/bin/env bash
@@ -143,7 +155,7 @@ jobs:
 
           deadline=$((SECONDS + QEMU_TIMEOUT_SECONDS))
           while (( SECONDS < deadline )); do
-            if grep -q "upysm smoke ok" "$log" 2>/dev/null; then
+            if grep -q "upysm qemu smoke ok" "$log" 2>/dev/null; then
               echo "QEMU smoke marker found."
               exit 0
             fi
