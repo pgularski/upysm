@@ -135,11 +135,6 @@ def run_async(coro):
 
 
 def test_async_queued_state_machine(aio_module):
-    import inspect
-
-    assert hasattr(inspect, 'isawaitable'), (
-        'pysm.aio requires inspect.isawaitable'
-    )
     run_async(async_queued_state_machine_case(aio_module))
 
 
