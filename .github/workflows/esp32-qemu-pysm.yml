@@ -110,7 +110,7 @@ jobs:
             -D "MICROPY_BOARD_DIR=/tmp/micropython/ports/esp32/boards/${MICROPYTHON_BOARD}" \
             -D "MICROPY_FROZEN_MANIFEST=${GITHUB_WORKSPACE}/build/qemu-pysm/manifest.py" \
             -B "build-${MICROPYTHON_BOARD}" \
-            qemu monitor
+            qemu
           SH
           chmod +x build/qemu-pysm/run-qemu.sh
 
